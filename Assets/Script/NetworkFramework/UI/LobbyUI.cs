@@ -524,7 +524,7 @@ public class LobbyUI : MonoBehaviour
     {
         for (int i = 0; i < 32; i++)
         {
-            string candidate = UnityEngine.Random.Range(100000, 999999).ToString();
+            string candidate = RoomIdGenerator.GenerateSixDigitId();
             if (!roomList.Exists(room => room != null && room.RoomId == candidate))
             {
                 return candidate;
@@ -539,10 +539,10 @@ public class LobbyUI : MonoBehaviour
         RoomData room = selectedRoom;
         if (room == null)
         {
-            SetText(selectedRoomPasswordText, "无密码");
-            SetText(selectedRoomStateText, "状态：--");
+            SetText(selectedRoomPasswordText, "--");
+            SetText(selectedRoomStateText, "--");
             SetText(selectedRoomPlayersText, "--/--");
-            SetText(selectedRoomMapText, "地图名称");
+            SetText(selectedRoomMapText, "--");
             SetText(selectedRoomNameText, "未选择房间");
             if (selectedRoomPosterImage != null)
             {

@@ -181,6 +181,6 @@ public class CreateRoomPanelUI : MonoBehaviour
 
     static string GenerateRandomRoomId()
     {
-        return UnityEngine.Random.Range(100000, 999999).ToString();
+        return RoomIdGenerator.GenerateSixDigitId();
     }
 }

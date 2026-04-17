@@ -25,7 +25,7 @@ public class RoomPlayerListItem : MonoBehaviour
         SetText(indexText, (player.index + 1).ToString());
         SetText(nameText, player.PlayerName);
         SetText(avatarText, $"形象：{player.AvatarId}");
-        SetText(readyText, player.readyToBegin ? "已准备" : "未准备");
+        SetText(readyText, player.IsReady ? "已准备" : "未准备");
         SetText(leaderText, player.IsLeader ? "房主" : string.Empty);
     }
 

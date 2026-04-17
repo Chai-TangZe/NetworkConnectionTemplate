@@ -7,6 +7,7 @@ using UnityEngine.UI;
 public class RoomUI : MonoBehaviour
 {
     [Header("房间信息")]
+    [SerializeField] Text roomIdText;
     [SerializeField] Text roomNameText;
     [SerializeField] Text mapNameText;
     [SerializeField] Text playerCountText;
@@ -86,7 +87,7 @@ public class RoomUI : MonoBehaviour
         RoomPlayer localPlayer = GetLocalRoomPlayer();
         if (localPlayer != null)
         {
-            localPlayer.CmdSetReady(!localPlayer.readyToBegin);
+            localPlayer.CmdSetReady(!localPlayer.IsReady);
         }
     }
 
@@ -247,6 +248,7 @@ public class RoomUI : MonoBehaviour
             }
 
             SetText(roomNameText, string.Empty);
+            SetText(roomIdText, string.Empty);
             SetText(mapNameText, string.Empty);
             SetText(playerCountText, string.Empty);
             SetText(roomStateText, string.Empty);
@@ -256,17 +258,19 @@ public class RoomUI : MonoBehaviour
 
         RoomPlayer localPlayer = GetLocalRoomPlayer();
         bool isLeader = IsLocalPlayerOwner(localPlayer);
-        bool isReady = localPlayer != null && localPlayer.readyToBegin;
+        bool isReady = localPlayer != null && localPlayer.IsReady;
         if ((!isLeader || roomManager.IsPlaying) && isRoomInfoEditMode)
         {
             isRoomInfoEditMode = false;
         }
 
+        string syncedRoomId = RoomPlayer.HasSyncedRoomInfo ? RoomPlayer.SyncedRoomId : roomManager.RoomId;
         string syncedRoomName = RoomPlayer.HasSyncedRoomInfo ? RoomPlayer.SyncedRoomName : roomManager.RoomName;
         string syncedMapName = RoomPlayer.HasSyncedRoomInfo ? RoomPlayer.SyncedMapName : roomManager.MapName;
         int syncedMaxPlayers = RoomPlayer.HasSyncedRoomInfo ? RoomPlayer.SyncedMaxPlayers : roomManager.MaxPlayersCount;
         bool syncedIsPlaying = RoomPlayer.HasSyncedRoomInfo ? RoomPlayer.SyncedIsPlaying : roomManager.IsPlaying;
 
+        SetText(roomIdText, $"房间号：{syncedRoomId}");
         SetText(roomNameText, $"房间：{syncedRoomName}");
         SetText(mapNameText, $"地图：{syncedMapName}");
         SetText(playerCountText, $"人数：{roomManager.GetPlayers().Count}/{syncedMaxPlayers}");
@@ -467,7 +471,7 @@ public class RoomUI : MonoBehaviour
                 continue;
             }
 
-            if (!player.readyToBegin)
+            if (!player.IsReady)
             {
                 return false;
             }
@@ -520,7 +524,7 @@ public class RoomUI : MonoBehaviour
             builder.Append($"[{player.index + 1}]");
             builder.Append(player.PlayerName);
             builder.Append(player.IsLeader ? "(房主)" : string.Empty);
-            builder.Append(player.readyToBegin ? "(已准备)" : "(未准备)");
+            builder.Append(player.IsReady ? "(已准备)" : "(未准备)");
             builder.Append(" ");
         }
 

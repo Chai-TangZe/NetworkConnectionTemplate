@@ -65,19 +65,22 @@ public class RoomManager : NetworkRoomManager
 
     public override void OnStartServer()
     {
-        // StopHost 后 OnStopServer 会清空 Instance；Awake 不会再次执行，第二次 StartHost 必须在此重新登记单例。
+        // StopHost/StartHost 复用同一个 NetworkManager 对象，服务端启动时确保单例引用指向当前实例。
         Instance = this;
         maxConnections = MaxPlayersCount;
         base.OnStartServer();
     }
 
+    public override void OnStartClient()
+    {
+        // 同一会话根内 StopHost -> StartClient 时，Awake 不会再次执行。
+        // 若仅在 Awake/OnStartServer 赋值，Instance 可能保持为空，导致 RoomUI 无法读取房间信息。
+        Instance = this;
+        base.OnStartClient();
+    }
+
     public override void OnStopServer()
     {
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-
         if (gameTimerCoroutine != null)
         {
             StopCoroutine(gameTimerCoroutine);
@@ -90,6 +93,14 @@ public class RoomManager : NetworkRoomManager
         roomPassword = null;
 
         base.OnStopServer();
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
     }
 
     /// <summary>
@@ -238,9 +249,9 @@ public class RoomManager : NetworkRoomManager
     {
         bool leaderLeft = false;
 
-        if (conn.identity != null && conn.identity.TryGetComponent(out RoomPlayer roomPlayer))
+        if (conn.identity != null && conn.identity.TryGetComponent(out RoomPlayer leavingPlayer))
         {
-            leaderLeft = roomPlayer.netId == roomOwnerNetId;
+            leaderLeft = leavingPlayer.netId == roomOwnerNetId;
         }
 
         base.OnRoomServerDisconnect(conn);
@@ -287,6 +298,13 @@ public class RoomManager : NetworkRoomManager
             StopGameTimer();
             EnsureLeaderExists();
             currentGameplayScene = ResolveGameplaySceneForCurrentMap();
+
+            // 从游戏场景回到房间后，所有人需要重新确认下一局准备状态。
+            if (!string.IsNullOrWhiteSpace(RoomScene) && sceneName == RoomScene)
+            {
+                ResetAllPlayersReadyState();
+                RoomEvents.RaisePlayerListChanged();
+            }
         }
 
         RoomEvents.RaiseRoomStateChanged(IsPlaying);
@@ -326,13 +344,46 @@ public class RoomManager : NetworkRoomManager
             requestedMaxPlayers = MaxPlayersCount;
         }
 
-        RoomName = string.IsNullOrWhiteSpace(roomName) ? RoomName : roomName.Trim();
-        MapName = GameMapCatalog.Normalize(string.IsNullOrWhiteSpace(mapName) ? MapName : mapName.Trim());
-        MaxPlayersCount = requestedMaxPlayers;
+        string nextRoomName = string.IsNullOrWhiteSpace(roomName) ? RoomName : roomName.Trim();
+        string nextMapName = GameMapCatalog.Normalize(string.IsNullOrWhiteSpace(mapName) ? MapName : mapName.Trim());
+        int nextMaxPlayers = requestedMaxPlayers;
+        bool roomInfoChanged = !string.Equals(RoomName, nextRoomName, StringComparison.Ordinal) ||
+                               !string.Equals(MapName, nextMapName, StringComparison.Ordinal) ||
+                               MaxPlayersCount != nextMaxPlayers;
+
+        RoomName = nextRoomName;
+        MapName = nextMapName;
+        MaxPlayersCount = nextMaxPlayers;
         maxConnections = MaxPlayersCount;
+
+        if (roomInfoChanged)
+        {
+            ResetAllPlayersReadyState();
+            RoomEvents.RaisePlayerListChanged();
+        }
 
         RoomEvents.RaiseRoomInfoChanged();
         ServerBroadcastRoomInfoSnapshot();
+    }
+
+    /// <summary>
+    /// 在 StartHost 前预设下一次房间配置，确保 OnStartServer 使用的是本次建房参数而非上次残留值。
+    /// </summary>
+    public void PrepareRoomConfigurationForNextHost(string roomName, string mapName, int maxPlayers, string roomId, string password)
+    {
+        string normalizedRoomId = NormalizeRoomId(roomId);
+        if (!string.IsNullOrWhiteSpace(normalizedRoomId))
+        {
+            RoomId = normalizedRoomId;
+        }
+
+        roomPassword = string.IsNullOrWhiteSpace(password) ? null : password.Trim();
+        RoomName = string.IsNullOrWhiteSpace(roomName) ? RoomName : roomName.Trim();
+        MapName = GameMapCatalog.Normalize(string.IsNullOrWhiteSpace(mapName) ? MapName : mapName.Trim());
+        MaxPlayersCount = Mathf.Max(1, maxPlayers);
+        maxConnections = MaxPlayersCount;
+        IsPlaying = false;
+        GameEndTime = 0d;
     }
 
     [Server]
@@ -359,7 +410,7 @@ public class RoomManager : NetworkRoomManager
                 continue;
             }
 
-            player.ServerPushRoomInfoTo(player.connectionToClient, RoomName, MapName, MaxPlayersCount, IsPlaying, GameEndTime);
+            player.ServerPushRoomInfoTo(player.connectionToClient, RoomId, RoomName, MapName, MaxPlayersCount, IsPlaying, GameEndTime);
         }
     }
 
@@ -377,7 +428,7 @@ public class RoomManager : NetworkRoomManager
             return;
         }
 
-        player.ServerPushRoomInfoTo(target, RoomName, MapName, MaxPlayersCount, IsPlaying, GameEndTime);
+        player.ServerPushRoomInfoTo(target, RoomId, RoomName, MapName, MaxPlayersCount, IsPlaying, GameEndTime);
     }
 
     [Server]
@@ -433,7 +484,7 @@ public class RoomManager : NetworkRoomManager
                 continue;
             }
 
-            if (!player.readyToBegin)
+            if (!player.IsReady)
             {
                 return false;
             }
@@ -805,6 +856,20 @@ public class RoomManager : NetworkRoomManager
         }
 
         return count;
+    }
+
+    [Server]
+    void ResetAllPlayersReadyState()
+    {
+        foreach (RoomPlayer player in GetPlayers())
+        {
+            if (player == null)
+            {
+                continue;
+            }
+
+            player.IsReady = false;
+        }
     }
 
 }

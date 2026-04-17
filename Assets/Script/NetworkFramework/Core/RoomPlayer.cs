@@ -4,6 +4,7 @@ using UnityEngine;
 public class RoomPlayer : NetworkRoomPlayer
 {
     public static bool HasSyncedRoomInfo { get; private set; }
+    public static string SyncedRoomId { get; private set; } = "000000";
     public static string SyncedRoomName { get; private set; } = "默认房间";
     public static string SyncedMapName { get; private set; } = "Map01";
     public static int SyncedMaxPlayers { get; private set; } = 4;
@@ -26,6 +27,9 @@ public class RoomPlayer : NetworkRoomPlayer
 
     [SyncVar(hook = nameof(OnRoomOwnerNetIdChanged))]
     public uint RoomOwnerNetId;
+
+    [SyncVar(hook = nameof(OnReadyFlagChanged))]
+    public bool IsReady;
 
     public override void OnStartClient()
     {
@@ -89,8 +93,15 @@ public class RoomPlayer : NetworkRoomPlayer
 
     public void CmdSetReady(bool ready)
     {
-        // 客户端统一走 Mirror 原生 CmdChangeReadyState，避免在自定义 Command 中跨程序集修改 SyncVar。
+        // Mirror 原生 readyToBegin 仍同步给 NetworkRoomManager，但业务与 UI 统一使用 IsReady。
         CmdChangeReadyState(ready);
+        CmdSetReadyFlag(ready);
+    }
+
+    [Command]
+    void CmdSetReadyFlag(bool ready)
+    {
+        IsReady = ready;
     }
 
     [Command]
@@ -135,14 +146,14 @@ public class RoomPlayer : NetworkRoomPlayer
     }
 
     [Server]
-    public void ServerPushRoomInfoTo(NetworkConnectionToClient target, string roomName, string mapName, int maxPlayers, bool isPlaying, double gameEndTime)
+    public void ServerPushRoomInfoTo(NetworkConnectionToClient target, string roomId, string roomName, string mapName, int maxPlayers, bool isPlaying, double gameEndTime)
     {
         if (target == null)
         {
             return;
         }
 
-        TargetApplyRoomInfo(target, roomName, mapName, maxPlayers, isPlaying, gameEndTime);
+        TargetApplyRoomInfo(target, roomId, roomName, mapName, maxPlayers, isPlaying, gameEndTime);
     }
 
     [Command]
@@ -181,9 +192,10 @@ public class RoomPlayer : NetworkRoomPlayer
     }
 
     [TargetRpc]
-    void TargetApplyRoomInfo(NetworkConnection target, string roomName, string mapName, int maxPlayers, bool isPlaying, double gameEndTime)
+    void TargetApplyRoomInfo(NetworkConnection target, string roomId, string roomName, string mapName, int maxPlayers, bool isPlaying, double gameEndTime)
     {
         HasSyncedRoomInfo = true;
+        SyncedRoomId = string.IsNullOrWhiteSpace(roomId) ? SyncedRoomId : roomId.Trim();
         SyncedRoomName = string.IsNullOrWhiteSpace(roomName) ? SyncedRoomName : roomName;
         SyncedMapName = string.IsNullOrWhiteSpace(mapName) ? SyncedMapName : mapName;
         SyncedMaxPlayers = Mathf.Max(1, maxPlayers);
@@ -209,6 +221,11 @@ public class RoomPlayer : NetworkRoomPlayer
     }
 
     void OnRoomOwnerNetIdChanged(uint oldValue, uint newValue)
+    {
+        NotifyUpdated();
+    }
+
+    void OnReadyFlagChanged(bool oldValue, bool newValue)
     {
         NotifyUpdated();
     }

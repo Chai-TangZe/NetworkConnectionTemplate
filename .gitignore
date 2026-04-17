@@ -5,3 +5,6 @@
 *.sln
 /Temp
 /UserSettings
+/Build
+/obj
+/.vs

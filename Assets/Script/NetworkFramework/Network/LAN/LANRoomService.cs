@@ -74,7 +74,7 @@ public class LANRoomService : MonoBehaviour, IRoomService
         string normalizedRoomId = NormalizeRoomId(roomId);
         if (string.IsNullOrWhiteSpace(normalizedRoomId))
         {
-            normalizedRoomId = Guid.NewGuid().ToString("N").Substring(0, 6).ToUpperInvariant();
+            normalizedRoomId = RoomIdGenerator.GenerateSixDigitId();
         }
 
         if (cachedRooms.Exists(room => room != null && string.Equals(room.RoomId, normalizedRoomId, StringComparison.OrdinalIgnoreCase)))
@@ -88,6 +88,20 @@ public class LANRoomService : MonoBehaviour, IRoomService
         {
             StopCoroutine(hostAssignCoroutine);
             hostAssignCoroutine = null;
+        }
+
+        // 关键：先写入本次建房配置，再 StartHost，避免 OnStartServer 读取到上次残留值（尤其是 MaxPlayersCount）。
+        RoomManager roomManagerForConfig = RoomManager.Instance != null
+            ? RoomManager.Instance
+            : NetworkManager.singleton as RoomManager;
+        if (roomManagerForConfig != null)
+        {
+            roomManagerForConfig.PrepareRoomConfigurationForNextHost(
+                roomName,
+                mapName,
+                maxPlayers,
+                normalizedRoomId,
+                roomPassword);
         }
 
         NetworkManager.singleton.StartHost();
