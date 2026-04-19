@@ -272,7 +272,7 @@ public class RoomUI : MonoBehaviour
 
         SetText(roomIdText, $"房间号：{syncedRoomId}");
         SetText(roomNameText, $"房间：{syncedRoomName}");
-        SetText(mapNameText, $"地图：{syncedMapName}");
+        SetText(mapNameText, $"地图：{MapDataRepository.GetDisplayName(syncedMapName)}");
         SetText(playerCountText, $"人数：{roomManager.GetPlayers().Count}/{syncedMaxPlayers}");
         SetText(roomStateText, syncedIsPlaying ? "状态：游戏中" : "状态：等待中");
         RefreshMapPoster(syncedMapName);
@@ -377,7 +377,13 @@ public class RoomUI : MonoBehaviour
         }
 
         mapDropdown.ClearOptions();
-        mapDropdown.AddOptions(new System.Collections.Generic.List<string>(GameMapCatalog.GetMapNames()));
+        var labels = new System.Collections.Generic.List<string>();
+        foreach (string internalName in GameMapCatalog.GetMapNames())
+        {
+            labels.Add(MapDataRepository.GetDisplayName(internalName));
+        }
+
+        mapDropdown.AddOptions(labels);
     }
 
     string GetSelectedMapName(string fallback)
@@ -385,7 +391,11 @@ public class RoomUI : MonoBehaviour
         if (mapDropdown != null && mapDropdown.options != null && mapDropdown.options.Count > 0)
         {
             int index = Mathf.Clamp(mapDropdown.value, 0, mapDropdown.options.Count - 1);
-            return mapDropdown.options[index].text;
+            System.Collections.Generic.IReadOnlyList<string> internalNames = GameMapCatalog.GetMapNames();
+            if (index < internalNames.Count)
+            {
+                return internalNames[index];
+            }
         }
 
         return fallback;
@@ -398,14 +408,17 @@ public class RoomUI : MonoBehaviour
             return;
         }
 
-        for (int i = 0; i < mapDropdown.options.Count; i++)
+        string normalized = GameMapCatalog.Normalize(mapName);
+        System.Collections.Generic.IReadOnlyList<string> internalNames = GameMapCatalog.GetMapNames();
+        for (int i = 0; i < internalNames.Count && i < mapDropdown.options.Count; i++)
         {
-            if (mapDropdown.options[i].text == mapName)
+            if (internalNames[i] == normalized)
             {
                 if (mapDropdown.value != i)
                 {
                     mapDropdown.value = i;
                 }
+
                 return;
             }
         }

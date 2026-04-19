@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class PlayerProfileContext : MonoBehaviour
@@ -6,12 +7,12 @@ public class PlayerProfileContext : MonoBehaviour
 
     const string PlayerDataKey = "NetworkFramework.PlayerData";
 
+    public event Action ProfileChanged;
+
     public NetworkModeType SelectedMode { get; private set; } = NetworkModeType.LAN;
-    public PlayerData CurrentProfile { get; private set; } = new PlayerData
-    {
-        PlayerName = "玩家",
-        AvatarId = 0
-    };
+
+    public UserData User { get; private set; } = new UserData();
+    public CharacterData Character { get; private set; } = new CharacterData();
 
     void Awake()
     {
@@ -24,7 +25,12 @@ public class PlayerProfileContext : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
         LoadProfile();
-        EnsureDefaultProfile();
+        string idBeforeMigration = User != null ? User.UserId : null;
+        EnsureDefaults();
+        if (string.IsNullOrWhiteSpace(idBeforeMigration) && User != null && !string.IsNullOrWhiteSpace(User.UserId))
+        {
+            SaveProfile();
+        }
     }
 
     public static PlayerProfileContext EnsureInstance()
@@ -43,22 +49,55 @@ public class PlayerProfileContext : MonoBehaviour
         SelectedMode = mode;
     }
 
-    public void UpdateProfile(PlayerData data)
+    /// <summary>
+    /// 预留：接入 Steam / 微信等平台时写入用户展示信息（头像属于用户，非角色）。
+    /// </summary>
+    public void ApplyExternalPlatformProfile(string platformUserId, string displayName, string description, int avatarId)
     {
-        if (data == null)
+        EnsureDefaults();
+        if (!string.IsNullOrWhiteSpace(platformUserId))
         {
-            return;
+            User.UserId = platformUserId.Trim();
         }
 
-        CurrentProfile = data;
-        EnsureDefaultProfile();
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            User.DisplayName = displayName.Trim();
+        }
+
+        User.Description = description ?? string.Empty;
+        User.AvatarId = AvatarDataRepository.ResolveEffectiveAvatarId(Mathf.Max(0, avatarId));
+        SaveProfile();
+    }
+
+    public void UpdateProfile(UserData user, CharacterData character)
+    {
+        if (user != null)
+        {
+            User = user;
+        }
+
+        if (character != null)
+        {
+            Character = character;
+        }
+
+        EnsureDefaults();
+        ProfileChanged?.Invoke();
     }
 
     public void SaveProfile()
     {
-        string json = JsonUtility.ToJson(CurrentProfile);
+        var root = new PlayerProfileRoot
+        {
+            Version = 2,
+            User = User,
+            Character = Character
+        };
+        string json = JsonUtility.ToJson(root);
         PlayerPrefs.SetString(PlayerDataKey, json);
         PlayerPrefs.Save();
+        ProfileChanged?.Invoke();
     }
 
     public void LoadProfile()
@@ -74,35 +113,129 @@ public class PlayerProfileContext : MonoBehaviour
             return;
         }
 
-        PlayerData loaded = JsonUtility.FromJson<PlayerData>(json);
-        if (loaded != null)
+        // 旧版扁平存档只有 PlayerName，没有 User.DisplayName；先走迁移避免误解析成空 User。
+        if (json.IndexOf("\"PlayerName\"", StringComparison.Ordinal) >= 0 &&
+            json.IndexOf("\"DisplayName\"", StringComparison.Ordinal) < 0 &&
+            TryMigrateLegacyV1(json))
         {
-            CurrentProfile = loaded;
+            return;
         }
 
-        EnsureDefaultProfile();
+        PlayerProfileLoadDto dto = null;
+        try
+        {
+            dto = JsonUtility.FromJson<PlayerProfileLoadDto>(json);
+        }
+        catch
+        {
+            dto = null;
+        }
+
+        if (dto != null && dto.User != null)
+        {
+            User = dto.User;
+            Character = new CharacterData
+            {
+                CharacterId = dto.Character != null ? dto.Character.CharacterId : null,
+                Parts = dto.Character != null && dto.Character.Parts != null
+                    ? dto.Character.Parts
+                    : new System.Collections.Generic.List<PlayerPartData>()
+            };
+
+            // 旧版曾把头像写在 Character.AvatarId，合并到用户头像。
+            if (User.AvatarId == 0 && dto.Character != null && dto.Character.AvatarId > 0)
+            {
+                User.AvatarId = dto.Character.AvatarId;
+            }
+
+            return;
+        }
+
+        TryMigrateLegacyV1(json);
     }
 
-    public void EnsureDefaultProfile()
+    [Serializable]
+    class LegacyPlayerDataV1
     {
-        if (CurrentProfile == null)
+        public string PlayerId;
+        public string PlayerName;
+        public string Description;
+        public int AvatarId;
+        public System.Collections.Generic.List<PlayerPartData> Parts;
+    }
+
+    bool TryMigrateLegacyV1(string json)
+    {
+        LegacyPlayerDataV1 legacy = null;
+        try
         {
-            CurrentProfile = new PlayerData();
+            legacy = JsonUtility.FromJson<LegacyPlayerDataV1>(json);
+        }
+        catch
+        {
+            return false;
         }
 
-        if (string.IsNullOrWhiteSpace(CurrentProfile.PlayerName))
+        if (legacy == null)
         {
-            CurrentProfile.PlayerName = "玩家";
+            return false;
         }
 
-        if (CurrentProfile.AvatarId < 0)
+        User = new UserData
         {
-            CurrentProfile.AvatarId = 0;
+            UserId = legacy.PlayerId,
+            DisplayName = legacy.PlayerName,
+            Description = legacy.Description ?? string.Empty,
+            AvatarId = Mathf.Max(0, legacy.AvatarId)
+        };
+
+        Character = new CharacterData
+        {
+            CharacterId = Guid.NewGuid().ToString("N"),
+            Parts = legacy.Parts ?? new System.Collections.Generic.List<PlayerPartData>()
+        };
+
+        SaveProfile();
+        return true;
+    }
+
+    public void EnsureDefaults()
+    {
+        if (User == null)
+        {
+            User = new UserData();
         }
 
-        if (CurrentProfile.Parts == null)
+        if (Character == null)
         {
-            CurrentProfile.Parts = new System.Collections.Generic.List<PlayerPartData>();
+            Character = new CharacterData();
+        }
+
+        if (string.IsNullOrWhiteSpace(User.UserId))
+        {
+            User.UserId = Guid.NewGuid().ToString("N");
+        }
+
+        if (string.IsNullOrWhiteSpace(User.DisplayName))
+        {
+            User.DisplayName = $"用户{UnityEngine.Random.Range(100000000, 1000000000)}";
+        }
+
+        if (User.Description == null)
+        {
+            User.Description = string.Empty;
+        }
+
+        User.AvatarId = AvatarDataRepository.ResolveEffectiveAvatarId(User.AvatarId);
+
+        if (string.IsNullOrWhiteSpace(Character.CharacterId))
+        {
+            Character.CharacterId = Guid.NewGuid().ToString("N");
+        }
+
+        if (Character.Parts == null)
+        {
+            Character.Parts = new System.Collections.Generic.List<PlayerPartData>();
         }
     }
 }

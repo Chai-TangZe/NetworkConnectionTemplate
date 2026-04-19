@@ -55,7 +55,7 @@ public class GameUI : MonoBehaviour
             bool syncedIsPlaying = hasSyncedRoomInfo ? RoomPlayer.SyncedIsPlaying : roomManager.IsPlaying;
             if (roomInfoText != null)
             {
-                roomInfoText.text = $"房间：{roomName} | 地图：{mapName}";
+                roomInfoText.text = $"房间：{roomName} | 地图：{MapDataRepository.GetDisplayName(mapName)}";
             }
 
             if (timerText != null)

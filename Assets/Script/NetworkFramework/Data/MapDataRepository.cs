@@ -30,6 +30,20 @@ public static class MapDataRepository
         return GetByType(mapType);
     }
 
+    /// <summary>
+    /// UI 展示用：根据网络/存档中的地图名（<see cref="GameMapType"/> 枚举名）解析为 <see cref="MapDataDefinition.displayName"/>。
+    /// </summary>
+    public static string GetDisplayName(string mapName)
+    {
+        MapDataDefinition def = GetByMapName(mapName);
+        if (def != null && !string.IsNullOrWhiteSpace(def.displayName))
+        {
+            return def.displayName.Trim();
+        }
+
+        return GameMapCatalog.Normalize(mapName);
+    }
+
     static void EnsureLoaded()
     {
         if (loaded)

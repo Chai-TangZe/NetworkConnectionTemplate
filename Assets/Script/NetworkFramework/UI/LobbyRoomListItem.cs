@@ -29,7 +29,7 @@ public class LobbyRoomListItem : MonoBehaviour
         }
 
         SetText(roomNameText, roomData.RoomName);
-        SetText(mapNameText, $"地图：{roomData.MapName}");
+        SetText(mapNameText, $"地图：{MapDataRepository.GetDisplayName(roomData.MapName)}");
         SetText(playerCountText, $"人数：{roomData.CurrentPlayers}/{roomData.MaxPlayers}");
         SetText(stateText, roomData.IsPlaying ? "状态：进行中" : "状态：招募中");
         SetJoinEnabled(true);

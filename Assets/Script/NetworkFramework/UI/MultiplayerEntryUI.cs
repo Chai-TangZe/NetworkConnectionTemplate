@@ -29,7 +29,7 @@ public class MultiplayerEntryUI : MonoBehaviour
 
         PlayerProfileContext profileContext = PlayerProfileContext.EnsureInstance();
         profileContext.SetNetworkMode(mode);
-        profileContext.EnsureDefaultProfile();
+        profileContext.EnsureDefaults();
 
         if (!string.IsNullOrWhiteSpace(multiplayerLobbySceneName))
         {

@@ -28,6 +28,48 @@ public class CreateRoomPanelUI : MonoBehaviour
     public event Action<string, string, int, string, string> OnCreateRequested;
     public event Action OnBackRequested;
 
+    void OnEnable()
+    {
+        if (PlayerProfileContext.Instance != null)
+        {
+            PlayerProfileContext.Instance.ProfileChanged += OnProfileChanged;
+        }
+    }
+
+    void OnDisable()
+    {
+        if (PlayerProfileContext.Instance != null)
+        {
+            PlayerProfileContext.Instance.ProfileChanged -= OnProfileChanged;
+        }
+    }
+
+    void OnProfileChanged()
+    {
+        if (panelRoot != null && panelRoot.activeSelf)
+        {
+            RefreshDefaultsFromProfile();
+            ApplyDefaultRoomNameToInput();
+        }
+    }
+
+    /// <summary>从当前用户档案同步默认昵称（建房面板每次打开与档案变更时都应调用）。</summary>
+    public void RefreshDefaultsFromProfile()
+    {
+        PlayerProfileContext context = PlayerProfileContext.Instance ?? PlayerProfileContext.EnsureInstance();
+        context.EnsureDefaults();
+        string name = context.User != null ? context.User.DisplayName : null;
+        defaultPlayerName = string.IsNullOrWhiteSpace(name) ? "玩家" : name.Trim();
+    }
+
+    void ApplyDefaultRoomNameToInput()
+    {
+        if (roomNameInput != null)
+        {
+            roomNameInput.text = $"{defaultPlayerName}创建的房间";
+        }
+    }
+
     public void SetDefaultPlayerName(string playerName)
     {
         defaultPlayerName = string.IsNullOrWhiteSpace(playerName) ? "玩家" : playerName.Trim();
@@ -40,6 +82,8 @@ public class CreateRoomPanelUI : MonoBehaviour
 
     public void Open()
     {
+        RefreshDefaultsFromProfile();
+
         if (panelRoot != null)
         {
             panelRoot.SetActive(true);
@@ -50,10 +94,8 @@ public class CreateRoomPanelUI : MonoBehaviour
             maxPlayersInput.text = "10";
         }
 
-        if (roomNameInput != null && string.IsNullOrWhiteSpace(roomNameInput.text))
-        {
-            roomNameInput.text = $"{defaultPlayerName}创建的房间";
-        }
+        // 每次打开都使用当前用户昵称生成默认房间名，避免仍显示修改档案前的旧文案。
+        ApplyDefaultRoomNameToInput();
 
         if (roomIdInput != null)
         {

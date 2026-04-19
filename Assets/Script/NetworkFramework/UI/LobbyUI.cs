@@ -33,6 +33,10 @@ public class LobbyUI : MonoBehaviour
 
     [Header("人物角标")]
     [SerializeField] Text profileCornerText;
+    [SerializeField] Image profileCornerAvatar;
+
+    [Header("人物信息面板")]
+    [SerializeField] UserInfoPanelUI userInfoPanel;
 
     [Header("进入房间前等待")]
     [SerializeField]
@@ -56,6 +60,7 @@ public class LobbyUI : MonoBehaviour
     void OnEnable()
     {
         ResolveRoomService();
+        SubscribeProfileEvents();
         RefreshProfileCorner();
         if (roomService != null)
         {
@@ -76,6 +81,8 @@ public class LobbyUI : MonoBehaviour
 
     void OnDisable()
     {
+        UnsubscribeProfileEvents();
+
         if (pendingRoomSceneCoroutine != null)
         {
             StopCoroutine(pendingRoomSceneCoroutine);
@@ -90,6 +97,35 @@ public class LobbyUI : MonoBehaviour
             {
                 lanRoom.OnHostRoomAuthorityReady -= OnHostRoomAuthorityReady;
             }
+        }
+    }
+
+    void SubscribeProfileEvents()
+    {
+        PlayerProfileContext context = PlayerProfileContext.EnsureInstance();
+        context.ProfileChanged -= OnLocalProfileChanged;
+        context.ProfileChanged += OnLocalProfileChanged;
+    }
+
+    void UnsubscribeProfileEvents()
+    {
+        if (PlayerProfileContext.Instance != null)
+        {
+            PlayerProfileContext.Instance.ProfileChanged -= OnLocalProfileChanged;
+        }
+    }
+
+    void OnLocalProfileChanged()
+    {
+        RefreshProfileCorner();
+    }
+
+    public void OnClickOpenUserInfo()
+    {
+        PlayerProfileContext.EnsureInstance();
+        if (userInfoPanel != null)
+        {
+            userInfoPanel.Open();
         }
     }
 
@@ -480,23 +516,28 @@ public class LobbyUI : MonoBehaviour
 
     void RefreshProfileCorner()
     {
-        if (profileCornerText == null)
+        PlayerProfileContext context = PlayerProfileContext.EnsureInstance();
+        context.EnsureDefaults();
+        UserData user = context.User;
+
+        if (profileCornerText != null)
         {
-            return;
+            if (user == null)
+            {
+                profileCornerText.text = "玩家：默认";
+            }
+            else
+            {
+                profileCornerText.text = $"玩家：{user.DisplayName}";
+            }
         }
 
-        PlayerProfileContext context = PlayerProfileContext.Instance;
-        if (context == null)
+        if (profileCornerAvatar != null && user != null)
         {
-            profileCornerText.text = "玩家：默认";
-            return;
+            Sprite icon = AvatarDataRepository.GetIconOrNull(user.AvatarId);
+            profileCornerAvatar.sprite = icon;
+            profileCornerAvatar.enabled = icon != null;
         }
-
-        context.EnsureDefaultProfile();
-        PlayerData data = context.CurrentProfile;
-        profileCornerText.text = data != null
-            ? $"玩家：{data.PlayerName}  形象：{data.AvatarId}"
-            : "玩家：默认";
     }
 
     void SetupCreateRoomPanel()
@@ -514,9 +555,7 @@ public class LobbyUI : MonoBehaviour
 
         if (PlayerProfileContext.Instance != null)
         {
-            createRoomPanel.SetDefaultPlayerName(PlayerProfileContext.Instance.CurrentProfile != null
-                ? PlayerProfileContext.Instance.CurrentProfile.PlayerName
-                : "玩家");
+            createRoomPanel.RefreshDefaultsFromProfile();
         }
     }
 
@@ -557,7 +596,7 @@ public class LobbyUI : MonoBehaviour
         SetText(selectedRoomPasswordText, room.HasPassword ? "有密码" : "无密码");
         SetText(selectedRoomStateText, room.IsPlaying ? "游戏中" : "招募中");
         SetText(selectedRoomPlayersText, $"{room.CurrentPlayers}/{room.MaxPlayers}人");
-        SetText(selectedRoomMapText, room.MapName);
+        SetText(selectedRoomMapText, MapDataRepository.GetDisplayName(room.MapName));
         SetText(selectedRoomNameText, room.RoomName);
         MapDataDefinition mapData = MapDataRepository.GetByMapName(room.MapName);
         if (selectedRoomPosterImage != null)

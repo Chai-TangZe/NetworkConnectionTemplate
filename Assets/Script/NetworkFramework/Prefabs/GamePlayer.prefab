@@ -761,6 +761,7 @@ MonoBehaviour:
   syncInterval: 0
   PlayerName: 
   AvatarId: 0
+  UserDescription: 
   overheadText: {fileID: 5144852314370813071}
 --- !u!114 &8214127607651714540
 MonoBehaviour:

@@ -20,6 +20,9 @@ public class RoomPlayer : NetworkRoomPlayer
     [SyncVar(hook = nameof(OnAvatarIdChanged))]
     public int AvatarId;
 
+    [SyncVar(hook = nameof(OnPlayerDescriptionChanged))]
+    public string PlayerDescription = string.Empty;
+
     // 房主标记只描述“谁有房间管理权限”，不表示服务器身份。
     [Header("房间状态")]
     [SyncVar(hook = nameof(OnLeaderChanged))]
@@ -43,17 +46,20 @@ public class RoomPlayer : NetworkRoomPlayer
     {
         base.OnStartAuthority();
 
-        // 优先使用本地角色设置；如果还没有设置则回退到随机默认名。
-        PlayerData localProfile = PlayerProfileContext.Instance != null
-            ? PlayerProfileContext.Instance.CurrentProfile
+        // 优先使用本地用户档案（账号名、用户头像、描述）；与角色身体/装饰数据分离。
+        UserData user = PlayerProfileContext.Instance != null
+            ? PlayerProfileContext.Instance.User
             : null;
 
-        string name = localProfile != null && !string.IsNullOrWhiteSpace(localProfile.PlayerName)
-            ? localProfile.PlayerName
+        string name = user != null && !string.IsNullOrWhiteSpace(user.DisplayName)
+            ? user.DisplayName
             : $"玩家_{Random.Range(1000, 9999)}";
-        int avatarId = localProfile != null ? Mathf.Max(0, localProfile.AvatarId) : 0;
+        int avatarId = user != null
+            ? AvatarDataRepository.ResolveEffectiveAvatarId(user.AvatarId)
+            : AvatarDataRepository.DefaultAvatarId;
+        string description = user != null && user.Description != null ? user.Description : string.Empty;
 
-        CmdSetPlayerInfo(name, avatarId);
+        CmdSetPlayerInfo(name, avatarId, description);
         CmdRequestRoomInfoSnapshot();
     }
 
@@ -85,10 +91,11 @@ public class RoomPlayer : NetworkRoomPlayer
     }
 
     [Command]
-    public void CmdSetPlayerInfo(string playerName, int avatarId)
+    public void CmdSetPlayerInfo(string playerName, int avatarId, string description)
     {
         PlayerName = string.IsNullOrWhiteSpace(playerName) ? $"玩家_{netId}" : playerName.Trim();
-        AvatarId = Mathf.Max(0, avatarId);
+        AvatarId = AvatarDataRepository.ResolveEffectiveAvatarId(avatarId);
+        PlayerDescription = description != null ? description.Trim() : string.Empty;
     }
 
     public void CmdSetReady(bool ready)
@@ -211,6 +218,11 @@ public class RoomPlayer : NetworkRoomPlayer
     }
 
     void OnAvatarIdChanged(int oldValue, int newValue)
+    {
+        NotifyUpdated();
+    }
+
+    void OnPlayerDescriptionChanged(string oldValue, string newValue)
     {
         NotifyUpdated();
     }
